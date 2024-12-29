@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="zh-cn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>点对点P2P文件传输</title>
+    <style>
+        *{
+            margin: 0;
+            padding: 0;
+            border: 0;
+            box-sizing: border-box;
+            text-decoration: none;
+            color:#333;
+            appearance: none;
+            font-weight: 100;
+            
+            list-style: none;
+            letter-spacing:2px;
+            outline: none;
+        }
+        body {
+            
+            padding: 20px;
+            background-color: #f8f8f8;
+        }
+        h1 {
+            text-align: center;
+        }
+        #connection-code {
+            text-align: center;
+            margin: 20px 0;
+        }
+        #connection-code input{
+            width: 50vw;
+            height: 40px;
+            border-radius: 5px;
+        }
+        #connection-code button{
+            min-width: 80px;
+            max-width: 120px;
+            height: 40px;
+            background-color: #333;
+            color: #fff;
+            border-radius: 5px;
+        }
+         #connection-code p{
+             height: 50px;
+             line-height: 50px;
+         }
+        #messages, #file-input {
+            margin: 20px 0;
+            padding: 10px;
+            border: 1px dashed #f8f8f8;
+            background: #fff;
+        }
+        #message-input,#file-selector{
+            max-width: 100%;
+            min-width: 100%;
+            border: 1px solid #ebebeb;
+            border-radius: 5px;
+            height: 50px;
+            padding: 10px;
+        }
+        #message-input{
+            height: 150px;
+        }
+        #send-button,#send-file-button{
+            display: block;
+            margin: 10px auto;
+            padding: 10px 20px;
+            border-radius: 5px;
+            background-color: #333;
+            color: #fff;
+        }
+        #generated-code{
+            cursor: pointer;
+        }
+        #message-display{
+            height: 200px;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #ebebeb;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>点对点P2P文件传输</h1>
+    <div id="connection-code">
+        <label for="code">连接码:</label>
+        <input type="text" id="code" placeholder="输入连接码">
+        <button id="connect-button">连接</button>
+        <p>您的连接码: <span id="generated-code"></span></p>
+    </div>
+    <div id="messages">
+        <h2>消息</h2>
+        <div id="message-display"></div>
+        <textarea type="text" id="message-input" placeholder="输入消息"></textarea>
+        <button id="send-button">发送</button>
+    </div>
+    <div id="file-input">
+        <h2>文件传输</h2>
+        <input type="file" id="file-selector">
+        <button id="send-file-button">发送文件</button>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/peerjs@1.3.2/dist/peerjs.min.js"></script>
+    <script>
+        const generatedCode = Math.random().toString(36).substring(2, 10);
+        document.getElementById('generated-code').innerText = generatedCode;
+
+        const peer = new Peer(generatedCode);
+        let conn;
+
+        peer.on('open', (id) => {
+            console.log('Peer连接已打开，ID:', id );
+            displayMessage('Peer连接已打开，ID: ' + id,true);
+        });
+
+        peer.on('error', (err) => {
+            console.error('Peer连接错误:', err);
+            displayMessage('Peer连接错误',true);
+        });
+
+        peer.on('disconnected', () => {
+            console.log('Peer连接已断开');
+            displayMessage('Peer连接已断开',true);
+        });
+
+        peer.on('close', () => {
+            console.log('Peer连接已关闭');
+            displayMessage('Peer连接已关闭',true);
+        });
+
+        document.getElementById('connect-button').addEventListener('click', () => {
+            const code = document.getElementById('code').value;
+            conn = peer.connect(code);
+            setupConnection(conn);
+        });
+
+        peer.on('connection', (connection) => {
+            conn = connection;
+            setupConnection(conn);
+        });
+
+        function setupConnection(connection) {
+            connection.on('open', () => {
+                console.log('连接已建立');
+                displayMessage('连接已建立',true);
+            });
+
+            connection.on('data', (data) => {
+                // console.log('收到数据:', data);
+                if (data.type === 'message') {
+                    displayMessage(data.content);
+                } else if (data.type === 'file') {
+                    downloadFile(data.content, data.fileName);
+                }
+            });
+
+            connection.on('close', () => {
+                console.log('连接已关闭');
+                displayMessage('连接已关闭',true);
+            });
+
+            connection.on('error', (err) => {
+                console.error('连接错误:', err);
+                displayMessage('连接错误',true);
+            });
+
+            document.getElementById('send-button').addEventListener('click', () => {
+                const message = document.getElementById('message-input').value;
+                connection.send({ type: 'message', content: message });
+                displayMessage(message, true);
+                // console.log('发送消息:', message);
+            });
+
+            document.getElementById('send-file-button').addEventListener('click', () => {
+                const file = document.getElementById('file-selector').files[0];
+                const reader = new FileReader();
+                reader.onload = () => {
+                    connection.send({ type: 'file', content: reader.result, fileName: file.name });
+                    // console.log('发送文件:', file.name);
+                };
+                reader.readAsArrayBuffer(file);
+            });
+        }
+
+        function displayMessage(message, isOwn = false) {
+            const messageDisplay = document.getElementById('message-display');
+            const messageElement = document.createElement('div');
+            messageElement.textContent = (isOwn ? '我: ' : '对方: ') + message;
+            messageDisplay.appendChild(messageElement);
+        }
+
+        function downloadFile(data, fileName) {
+            const blob = new Blob([data]);
+            const link = document.createElement('a');
+            link.href = window.URL.createObjectURL(blob);
+            link.download = fileName;
+            link.click();
+            console.log('下载文件:', fileName);
+            displayMessage('下载文件: ' + fileName, true);
+        }
+        
+        const generatedCodeSpan = document.getElementById('generated-code');
+
+        generatedCodeSpan.addEventListener('click', async function () {
+            try {
+                await navigator.clipboard.writeText(generatedCodeSpan.textContent);
+                console.log('连接码已复制到剪贴板');
+                displayMessage('连接码已复制到剪贴板',true);
+            } catch (error) {
+                console.error('复制失败：', error);
+                displayMessage('复制失败',true);
+            }
+        });
+    </script>
+</body>
+</html>
